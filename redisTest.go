@@ -3,8 +3,17 @@ package main
 import (
 	"fmt"
 	"github.com/fzzy/radix/redis"
-	//"time"
+	//"github.com/gorilla/mux"
+	//"log"
+	"math/rand"
+	//"net/http"
+	"strconv"
 )
+
+//TODO
+//add in a difference in what is returned if the ballot is open in getBallot()
+//make the DB unique name
+//
 
 func main() {
 
@@ -35,50 +44,49 @@ func main() {
 	getBallot(client, "1234")
 	//setVote(client, "1234", "102.169.123", "V1")
 	//setVote(client, "1234", "102.169.123", "V1")
+
+	fmt.Println(randID())
+
+}
+
+//returns a string of 10 random numbers
+func randID() (ID string) {
+	return strconv.Itoa(rand.Int())[2:12]
 }
 
 func setBallot(client *redis.Client, dbName string, info map[string]string, voteTimeout int) {
 
 	//set the info hash and give a extra day of timeout
-	_, err := client.Cmd("HMSET", dbName+"Info", info).Str()
-	handleErr(err)
-	_, err = client.Cmd("EXPIRE", dbName+"Info", voteTimeout+86400).Int()
-	handleErr(err)
+	client.Append("HMSET", dbName+"Info", info)
+	client.Append("EXPIRE", dbName+"Info", voteTimeout+86400)
 
 	//set the IP set and also give a extra day of timeout
-	_, err = client.Cmd("SADD", dbName+"IpSet", "1").Int()
-	handleErr(err)
-	_, err = client.Cmd("EXPIRE", dbName+"IpSet", voteTimeout+86400).Int()
-	handleErr(err)
+	client.Append("SADD", dbName+"IpSet", "1")
+	client.Append("EXPIRE", dbName+"IpSet", voteTimeout+86400)
 
 	//set v1 - v5 and add the timeout
-	_, err = client.Cmd("SET", dbName+"V1", "0").Str()
-	handleErr(err)
-	_, err = client.Cmd("EXPIRE", dbName+"V1", voteTimeout+86400).Int()
-	handleErr(err)
-	_, err = client.Cmd("SET", dbName+"V2", "0").Str()
-	handleErr(err)
-	_, err = client.Cmd("EXPIRE", dbName+"V2", voteTimeout+86400).Int()
-	handleErr(err)
-	_, err = client.Cmd("SET", dbName+"V3", "0").Str()
-	handleErr(err)
-	_, err = client.Cmd("EXPIRE", dbName+"V3", voteTimeout+86400).Int()
-	handleErr(err)
-	_, err = client.Cmd("SET", dbName+"V4", "0").Str()
-	handleErr(err)
-	_, err = client.Cmd("EXPIRE", dbName+"V4", voteTimeout+86400).Int()
-	handleErr(err)
-	_, err = client.Cmd("SET", dbName+"V5", "0").Str()
-	handleErr(err)
-	_, err = client.Cmd("EXPIRE", dbName+"V5", voteTimeout+86400).Int()
-	handleErr(err)
+	client.Append("SET", dbName+"V1", "0")
+	client.Append("EXPIRE", dbName+"V1", voteTimeout+86400)
+	client.Append("SET", dbName+"V2", "0")
+	client.Append("EXPIRE", dbName+"V2", voteTimeout+86400)
+	client.Append("SET", dbName+"V3", "0")
+	client.Append("EXPIRE", dbName+"V3", voteTimeout+86400)
+	client.Append("SET", dbName+"V4", "0")
+	client.Append("EXPIRE", dbName+"V4", voteTimeout+86400)
+	client.Append("SET", dbName+"V5", "0")
+	client.Append("EXPIRE", dbName+"V5", voteTimeout+86400)
 
 	//set the write timeout
-	_, err = client.Cmd("SET", dbName+"Write", "1").Str()
-	handleErr(err)
-	_, err = client.Cmd("EXPIRE", dbName+"Write", voteTimeout).Int()
-	handleErr(err)
+	client.Append("SET", dbName+"Write", "1")
+	client.Append("EXPIRE", dbName+"Write", voteTimeout)
 
+	//go through each command and panic if theres an error
+	for i := 0; i < 14; i++ {
+		r := client.GetReply()
+		handleErr(r.Err)
+		a := fmt.Sprintf("for %d", i) //tester code
+		fmt.Println(a)                //tester code
+	}
 }
 
 func setVote(client *redis.Client, dbName string, ipAddress string, v string) {
