@@ -112,10 +112,10 @@ func postBallot(Client *redis.Client) func(w http.ResponseWriter, r *http.Reques
 			handleErr(n.Err)
 		}
 
-		//output to HTTP request and to the programs logs
-		w.WriteHeader(201)
-		w.Write([]byte("http://localhost:3000/ballot/" + dbName))
-		log.Println("[request: postBallot, IP " + r.RemoteAddr + "] [responce: status 201; id " + dbName + " created]")
+		//output to HTTP request and to the programs logs, 303 to redirect to get ballot
+		w.Header().Add("Location", "http://localhost:3000/ballot/"+dbName)
+		w.WriteHeader(303)
+		log.Println("[request: postBallot, IP " + r.RemoteAddr + "] [responce: status 303; id " + dbName + " created]")
 	}
 }
 
@@ -136,45 +136,51 @@ func getBallot(Client *redis.Client) func(w http.ResponseWriter, r *http.Request
 			return
 		}
 
-		//TODO this should be returning the vote catagories for the user to post to
-		//check write to see if timedout
-		write, err := Client.Cmd("EXISTS", dbName+"Write").Int()
-		handleErr(err)
-		if write == 1 {
-			//output to HTTP request and to the programs logs then return
-			w.WriteHeader(403)
-			w.Write([]byte("Ballot " + dbName + " still active, please wait for voting to end"))
-			log.Println("[request: getBallot, IP " + r.RemoteAddr + "] [responce: status 404; id " + dbName + " still open]")
-			return
-		}
-
-		//get the votes
-		V1, _ := Client.Cmd("GET", dbName+"V1").Str()
-		V2, _ := Client.Cmd("GET", dbName+"V2").Str()
-		V3, _ := Client.Cmd("GET", dbName+"V3").Str()
-		V4, _ := Client.Cmd("GET", dbName+"V4").Str()
-		V5, _ := Client.Cmd("GET", dbName+"V5").Str()
-
 		//get the names and descrips
 		var info map[string]string
 		info, err = Client.Cmd("HGETALL", dbName+"Info").Hash()
 
-		//insert all of the info into a map
-		Ballot := map[string]string{
-			"name":        info["name"],
-			"description": info["description"],
-			info["V1"]:    V1,
-			info["V2"]:    V2,
-			info["V3"]:    V3,
-			info["V4"]:    V4,
-			"NotA":        V5,
+		var Ballot map[string]string
+
+		//check write to see if write timedout, and reply with vote numbers depending
+		write, err := Client.Cmd("EXISTS", dbName+"Write").Int()
+		handleErr(err)
+		if write == 1 {
+			//The ballot is still open, show don't show votes
+			Ballot = map[string]string{
+				"name":        info["name"],
+				"description": info["description"],
+				"V1":          info["V1"],
+				"V2":          info["V2"],
+				"V3":          info["V3"],
+				"V4":          info["V4"],
+			}
+
+		} else {
+			//The ballot is closed, get the votes
+			V1, _ := Client.Cmd("GET", dbName+"V1").Str()
+			V2, _ := Client.Cmd("GET", dbName+"V2").Str()
+			V3, _ := Client.Cmd("GET", dbName+"V3").Str()
+			V4, _ := Client.Cmd("GET", dbName+"V4").Str()
+			V5, _ := Client.Cmd("GET", dbName+"V5").Str()
+
+			//insert all of the info into a map
+			Ballot = map[string]string{
+				"name":        info["name"],
+				"description": info["description"],
+				info["V1"]:    V1,
+				info["V2"]:    V2,
+				info["V3"]:    V3,
+				info["V4"]:    V4,
+				"NotA":        V5,
+			}
 		}
 
-		asd, _ := json.Marshal(Ballot)
+		jsonResponce, _ := json.Marshal(Ballot)
 
 		//output to HTTP request and to the programs logs
 		w.WriteHeader(200)
-		w.Write(asd)
+		w.Write(jsonResponce)
 		log.Println("[request: getBallot, IP " + r.RemoteAddr + "] [responce: status 200; id " + dbName + "]")
 	}
 }
