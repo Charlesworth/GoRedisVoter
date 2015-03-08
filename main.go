@@ -2,7 +2,7 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
+	//"fmt"
 	"github.com/fzzy/radix/redis"
 	"github.com/gorilla/mux"
 	"io/ioutil"
@@ -19,7 +19,7 @@ type Message struct {
 	V2   string
 	V3   string
 	V4   string
-	Time string
+	Time int
 }
 
 type Vote struct {
@@ -30,24 +30,31 @@ var Client redis.Client
 
 func main() {
 
+	log.Println("   __    __")
+	log.Println("  |  _  |      | /")
+	log.Println("  |__|o | edis |/oter by Charles Cochrane")
+	log.Println("https://github.com/Charlesworth/GoRedisVoter")
+	log.Println("--------------------------------------------")
+
 	Client, err := redis.Dial("tcp", "178.62.74.225:6379")
 	handleErr(err)
 	defer Client.Close()
 
 	foo, err := Client.Cmd("PING").Str()
 	handleErr(err)
-	fmt.Println(foo)
+	log.Println("Redis Connection Reply: " + foo + " (we're good to go)")
 
-	foo, err = Client.Cmd("FLUSHALL").Str()
-	handleErr(err)
-	fmt.Println(foo)
+	foo, err = Client.Cmd("FLUSHALL").Str() //test code
+	handleErr(err)                          //test code
 
 	rtr := mux.NewRouter()
 	rtr.HandleFunc("/ballot/{id:[0-9]+}", getBallot(Client)).Methods("GET")
 	rtr.HandleFunc("/ballot/{id:[0-9]+}", postVote(Client)).Methods("POST")
 	//rtr.PathPrefix("/make").Methods("GET").Handler(http.FileServer(http.Dir("./website")))
+	//rtr.HandleFunc("/make", testMeth).Methods("GET")
+	//rtr.PathPrefix("/make").Handler(http.FileServer(http.Dir("./website")))
 	rtr.HandleFunc("/make", postBallot(Client)).Methods("POST")
-	rtr.PathPrefix("/").Handler(http.FileServer(http.Dir("./website")))
+	//rtr.PathPrefix("/").Handler(http.FileServer(http.Dir("./website")))
 
 	http.Handle("/", rtr)
 
@@ -61,13 +68,11 @@ func postBallot(Client *redis.Client) func(w http.ResponseWriter, r *http.Reques
 	return func(w http.ResponseWriter, r *http.Request) {
 
 		body, _ := ioutil.ReadAll(r.Body)
-		fmt.Println("response Body:", string(body))
 		var d Message
 		json.Unmarshal(body, &d)
-		fmt.Println(d)
 
 		dbName := randID()
-		voteTimeout := 1234
+		voteTimeout := d.Time
 		info := map[string]string{
 			"name":        d.Name,
 			"description": d.Desc,
@@ -105,11 +110,12 @@ func postBallot(Client *redis.Client) func(w http.ResponseWriter, r *http.Reques
 		for i := 0; i < 14; i++ {
 			n := Client.GetReply()
 			handleErr(n.Err)
-			a := fmt.Sprintf("for %d", i) //tester code
-			fmt.Println(a)                //tester code
 		}
 
-		w.Write([]byte("vote created: http://localhost:3000/ballot/" + dbName))
+		//output to HTTP request and to the programs logs
+		w.WriteHeader(201)
+		w.Write([]byte("http://localhost:3000/ballot/" + dbName))
+		log.Println("[request: postBallot, IP " + r.RemoteAddr + "] [responce: status 201; id " + dbName + " created]")
 	}
 }
 
@@ -118,14 +124,27 @@ func getBallot(Client *redis.Client) func(w http.ResponseWriter, r *http.Request
 	return func(w http.ResponseWriter, r *http.Request) {
 		params := mux.Vars(r)
 		dbName := params["id"]
-		log.Println("GET request on ballot id: " + dbName)
-		w.Write([]byte("Hello fart " + dbName))
 
 		//check if the ballot info is present in redis
 		stillThere, err := Client.Cmd("EXISTS", dbName+"V1").Int()
 		handleErr(err)
 		if stillThere == 0 {
-			fmt.Println("Ballot not in memory, either deleted or not made to start with!")
+			//output to HTTP request and to the programs logs then return
+			w.WriteHeader(404)
+			w.Write([]byte("Ballot " + dbName + " not in memory, either deleted or never made"))
+			log.Println("[request: getBallot, IP " + r.RemoteAddr + "] [responce: status 404; id " + dbName + " not found in redis]")
+			return
+		}
+
+		//TODO this should be returning the vote catagories for the user to post to
+		//check write to see if timedout
+		write, err := Client.Cmd("EXISTS", dbName+"Write").Int()
+		handleErr(err)
+		if write == 1 {
+			//output to HTTP request and to the programs logs then return
+			w.WriteHeader(403)
+			w.Write([]byte("Ballot " + dbName + " still active, please wait for voting to end"))
+			log.Println("[request: getBallot, IP " + r.RemoteAddr + "] [responce: status 404; id " + dbName + " still open]")
 			return
 		}
 
@@ -151,7 +170,12 @@ func getBallot(Client *redis.Client) func(w http.ResponseWriter, r *http.Request
 			"NotA":        V5,
 		}
 
-		fmt.Println(Ballot)
+		asd, _ := json.Marshal(Ballot)
+
+		//output to HTTP request and to the programs logs
+		w.WriteHeader(200)
+		w.Write(asd)
+		log.Println("[request: getBallot, IP " + r.RemoteAddr + "] [responce: status 200; id " + dbName + "]")
 	}
 }
 
@@ -161,38 +185,51 @@ func postVote(Client *redis.Client) func(w http.ResponseWriter, r *http.Request)
 	return func(w http.ResponseWriter, r *http.Request) {
 		params := mux.Vars(r)
 		dbName := params["id"]
-		log.Println("GET request on ballot id: " + dbName)
-		w.Write([]byte("Hello fart " + dbName))
 
 		body, _ := ioutil.ReadAll(r.Body)
-		fmt.Println("response Body:", string(body))
 		var d Vote
 		json.Unmarshal(body, &d)
-		fmt.Println(d)
 
-		//ipAddress := r.RemoteAddr
+		ipAddress := r.RemoteAddr
 		v := d.Vote
 
-		//check the IP set if the IP address has already voted or not
-		//		ipPresent, err := Client.Cmd("SADD", dbName+"IpSet", ipAddress).Int()
-		//		handleErr(err)
-		//		if ipPresent == 0 {
-		//			fmt.Println("IP " + ipAddress + " already voted, go away!")
-		//			return
-		//		}
-
-		//check write to see if timedout
-		write, err := Client.Cmd("EXISTS", dbName+"Write").Int()
-		fmt.Println(write)
-		if write == 0 {
-			fmt.Println("Ballot " + dbName + " write timeout, no more voting, go away!")
+		//check if the ballot info is present in redis
+		stillThere, err := Client.Cmd("EXISTS", dbName+"V1").Int()
+		handleErr(err)
+		if stillThere == 0 {
+			//output to HTTP request and to the programs logs then return
+			w.WriteHeader(404)
+			w.Write([]byte("Ballot " + dbName + " not in memory, either deleted or never made"))
+			log.Println("[request: postVote, IP " + r.RemoteAddr + "] [responce: status 404; id " + dbName + " not found in redis]")
 			return
 		}
 
-		//add vote code here
-		fmt.Println("Vote MUTHER FUCKER!")
+		//check the IP set if the IP address has already voted or not
+		ipPresent, err := Client.Cmd("SADD", dbName+"IpSet", ipAddress).Int()
+		handleErr(err)
+		if ipPresent == 0 {
+			w.WriteHeader(403)
+			w.Write([]byte("IP " + ipAddress + " already voted on this ballot"))
+			log.Println("[request: postVote, IP " + r.RemoteAddr + "] [responce: status 403; id " + dbName + " IP already votes]")
+			return
+		}
+
+		//check write to see if timed-out
+		write, err := Client.Cmd("EXISTS", dbName+"Write").Int()
+		handleErr(err)
+		if write == 0 {
+			w.WriteHeader(403)
+			w.Write([]byte("Ballot " + dbName + " write timeout"))
+			log.Println("[request: postVote, IP " + r.RemoteAddr + "] [responce: status 403; id " + dbName + " write timeout]")
+			return
+		}
+
 		_, err = Client.Cmd("INCR", dbName+v).Int()
 		handleErr(err)
+
+		//output to HTTP request and to the programs logs
+		w.WriteHeader(200)
+		log.Println("[request: postVote, IP " + r.RemoteAddr + "] [responce: status 200; id " + dbName + " vote " + d.Vote + " added]")
 	}
 }
 
@@ -201,8 +238,10 @@ func randID() (ID string) {
 	return strconv.Itoa(rand.Int())[2:12]
 }
 
+//prints error to log then panics
 func handleErr(err error) {
 	if err != nil {
+		log.Println(err)
 		panic(err)
 	}
 }
