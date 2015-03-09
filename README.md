@@ -1,7 +1,14 @@
 # GoRedisVoter
 
-Fast, concurrent voting application written with Go, using Redis as a database.
-Easy API and in development web interface.
+Fast, concurrent voting application written with Go, using Redis as a database. Every connection call spins up a new Go routine, making this highly concurrent, allowing 1000s of requests per second. Easy API and in development web interface. I plan to host this as a free service shortly, please get in touch if you would be interested.
+
+##TODO list
+
+- Combine with Redis in a docker image, with auto start using a docker file
+- Produce a web interface and templating for ballot calling
+- Allow any number of voting catagories
+- Make option to allow the votes to be viewed while the ballot is still open
+- Link to my comment service (also in development) to allow a comment attachement to each vote
 
 ## Usage
 
