@@ -30,13 +30,27 @@ This is used to make a Ballot. Feed it a JSON document in the HTTP request body 
 | "Time" | Time(s) for ballot to be open | 600 |
   
 Example:
-- URL: _localhost:3000/make_
+- POST URL: _localhost:3000/make_
 - POST Body: _{"Name":"Dinner Time","Desc":"What should I have for dinner?","V1":"Pizza","V2":"Pasta","V3":"Burger","V4":"Fish","Time":600}_
 - Response: 303 redirect to localhost:3000/ballot/*BallotID*
 
 ### Query the Ballot: `Get` [appUrl]/ballot/[ballotID]
 This API request is used to query the ballot. if the ballot is still active and accepting votes, you will only recieve back the ballot name, description and vote catagory names. Once the vote is over you will also get back the vote results. This requires no JSON in the body of the request, just the ballot ID in the URL.
 
+Example:
+- GET URL: _localhost:3000/ballot/7700679194_
+- Response if ballot open: 200 {"V1":"Pizza","V2":"Pasta","V3":"Burger","V4":"Fish","description":"What should I have for dinner tonight","name":"Dinner Time"}
+- Response if ballot closed: 200 {"Pizza":"0","Pasta":"0","Burger":"0","Fish":"0","NotA":"0","description":"What should I have for dinner tonight","name":"Dinner Time"}
 
 ###Vote on a Ballot: `Post` [appUrl]/ballot/[ballotID]
-asld;okjkfh;ldasfj;ldasf
+This POST request sends a vote to the application. On each vote the requester IP address is logged, so each IP can only cast a single vote. If the ballot is closed the vote will be refused also. The user can vote for V1 to V4 and additionaly V5, the "None of the above" option.
+
+| Name | Value Description | Value Example |
+| ---- | ---- | ---- |
+| "Vote" | Vote catagory you wish to vote for, V1 - V5 | "V3" |
+
+Example:
+- POST URL: _localhost:3000/ballot/7700679194_
+- Post Body: {"Vote":"V1"}
+- Response if ballot open: 200
+- Response if ballot closed: 403 Ballot 7700679194 write timeout
